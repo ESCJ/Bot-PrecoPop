@@ -1,0 +1,38 @@
+{
+  "name": "grupo-vip-loja-preco-pop-bot",
+  "version": "1.0.0",
+  "description": "Bot de vendas no Telegram para o Grupo Vip - Loja Preço Pop!",
+  "main": "dist/index.js",
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsx watch src/index.ts",
+    "start": "node dist/index.js"
+  },
+  "keywords": [
+    "telegram",
+    "bot",
+    "vendas",
+    "mercado-pago"
+  ],
+  "author": "",
+  "license": "MIT",
+  "dependencies": {
+    "body-parser": "^2.3.0",
+    "dotenv": "^16.4.5",
+    "express": "^4.21.0",
+    "mercadopago": "^2.0.15",
+    "sqlite": "^5.1.1",
+    "sqlite3": "^5.1.7",
+    "telegraf": "^4.16.3",
+    "telegraf-session-local": "^2.1.1",
+    "validator": "^13.12.0"
+  },
+  "devDependencies": {
+    "@types/body-parser": "^1.19.6",
+    "@types/express": "^4.17.21",
+    "@types/node": "^22.7.4",
+    "@types/validator": "^13.12.2",
+    "tsx": "^4.19.1",
+    "typescript": "^5.6.2"
+  }
+}
