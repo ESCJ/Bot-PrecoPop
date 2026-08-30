@@ -130,16 +130,9 @@ describe("Migrations", () => {
     // "value ... is out of range for type integer".
     const BIG_TELEGRAM_ID = 8_601_816_429;
 
-    it("declara BIGINT em toda coluna que guarda id de usuário", async () => {
-      for (const [table, column] of TELEGRAM_ID_COLUMNS) {
-        expect(await columnType(table, column), `${table}.${column} deveria ser bigint`).toBe(
-          "bigint"
-        );
-      }
-    });
-
-    it("cadastra um usuário com id acima do limite do integer", async () => {
-      const created = await createUser({
+    /** Cria pelo caminho real do cadastro, respeitando todas as constraints. */
+    function createBigUser() {
+      return createUser({
         id: BIG_TELEGRAM_ID,
         name: "Usuário Novo",
         cpf: "39053344705",
@@ -152,6 +145,18 @@ describe("Migrations", () => {
         city: "São Paulo",
         state: "SP",
       });
+    }
+
+    it("declara BIGINT em toda coluna que guarda id de usuário", async () => {
+      for (const [table, column] of TELEGRAM_ID_COLUMNS) {
+        expect(await columnType(table, column), `${table}.${column} deveria ser bigint`).toBe(
+          "bigint"
+        );
+      }
+    });
+
+    it("cadastra um usuário com id acima do limite do integer", async () => {
+      const created = await createBigUser();
 
       expect(created.id).toBe(BIG_TELEGRAM_ID);
       expect((await findUserById(BIG_TELEGRAM_ID))?.id).toBe(BIG_TELEGRAM_ID);
@@ -163,14 +168,13 @@ describe("Migrations", () => {
       await db.execute("ALTER TABLE users ALTER COLUMN id TYPE INTEGER");
       expect(await columnType("users", "id")).toBe("integer");
 
+      // Antes da migration, o /start desse usuario falhava aqui.
+      await expect(createBigUser()).rejects.toThrow(/out of range/i);
+
       await db.execute(migrationSql("011_bigint_user_ids.sql"));
 
       expect(await columnType("users", "id")).toBe("bigint");
-
-      await db.execute("INSERT INTO users (id, name, cpf) VALUES ($1, 'Grande', '39053344705')", [
-        BIG_TELEGRAM_ID,
-      ]);
-      expect((await findUserById(BIG_TELEGRAM_ID))?.id).toBe(BIG_TELEGRAM_ID);
+      expect((await createBigUser()).id).toBe(BIG_TELEGRAM_ID);
     });
 
     it("é idempotente quando o banco já está correto", async () => {
@@ -184,19 +188,7 @@ describe("Migrations", () => {
       // O driver pg devolve int8 como string por padrão. Sem o type parser,
       // user.id nunca bateria com o id que o Telegram envia e todo SUM() do
       // relatório de faturamento viraria concatenação de texto.
-      await createUser({
-        id: BIG_TELEGRAM_ID,
-        name: "Usuário Novo",
-        cpf: "39053344705",
-        phone: null,
-        zipCode: "01001000",
-        street: "Praça da Sé",
-        number: "1",
-        complement: null,
-        neighborhood: "Sé",
-        city: "São Paulo",
-        state: "SP",
-      });
+      await createBigUser();
 
       const user = await findUserById(BIG_TELEGRAM_ID);
       expect(typeof user?.id).toBe("number");
