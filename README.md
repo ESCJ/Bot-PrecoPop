@@ -252,12 +252,28 @@ docker run --env-file .env -p 3000:3000 preco-pop-bot
    - `PUBLIC_URL` e `WEBHOOK_URL` → `https://<seu-dominio>.up.railway.app`
    - demais variáveis da tabela acima
    - **não** crie `PORT` manualmente; o Railway injeta.
-3. **Deploy**: o `railway.json` já define build, start e health check em `/health`.
+3. **Deploy**: a infraestrutura é declarada em `.railway/railway.ts`
+   (Infrastructure as Code) — builder, build command, start command, health
+   check e o inventário de variáveis do serviço. Para revisar e aplicar:
+
+   ```bash
+   npm install
+   railway config plan    # somente leitura, mostra o que mudaria
+   railway config apply   # aplica após confirmação
+   ```
+
+   Com o código e o Railway em sincronia, o `plan` termina em
+   *already up to date*.
 4. **Verifique**: `curl https://<seu-dominio>.up.railway.app/health` deve
    retornar `{"status":"ok","database":"up"}`. Se vier `503`, o Postgres não
    está acessível — confira `DATABASE_URL` e `DATABASE_SSL`.
 
 As migrations rodam sozinhas no boot; não há passo manual no deploy.
+
+> O `railway.json` (Config as Code) foi descontinuado pelo Railway e deixa de
+> ser lido em 2026-12-01, então a configuração foi migrada para
+> `.railway/railway.ts`. Os valores das variáveis continuam no Railway: o
+> arquivo usa `preserve()`, de modo que nenhum segredo é versionado.
 
 ---
 
