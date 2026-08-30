@@ -11,11 +11,11 @@ async function main() {
   console.log("Banco de dados inicializado.");
 
   const app = express();
-  app.use(bodyParser.json());
+  app.use(express.json());
 
   const bot = createBot();
 
-  app.use("/webhooks", createWebhookRouter(bot));
+  app.use("/webhooks", express.raw({ type: "application/json" }), createWebhookRouter(bot));
 
   // Endpoint de health check
   app.get("/health", (_req, res) => {

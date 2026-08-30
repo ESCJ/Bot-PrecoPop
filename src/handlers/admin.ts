@@ -1,15 +1,18 @@
-import { Composer, Markup, Scenes } from "telegraf";
+import { Composer, Markup, Scenes, Telegraf } from "telegraf";
 import { config } from "../config";
 import { MyContext } from "../types";
 import {
   createItem,
+  deleteItem,
   findItemById,
   formatPrice,
   listAllItems,
   markItemAsSoldOut,
   relaunchItem,
+  updateItem,
 } from "../services/items";
-import { listAllUserIds } from "../services/users";
+import { findUserById, listAllUserIds } from "../services/users";
+import { findOrderById, getSalesReport, markOrderAsShipped } from "../services/orders";
 
 export function isAdmin(ctx: MyContext): boolean {
   return ctx.from?.id === config.admin.chatId;
@@ -112,7 +115,7 @@ export const newItemWizard = new Scenes.WizardScene<MyContext>(
       );
 
       await ctx.reply(
-        `Item publicado com sucesso!\n\nID: ${item.id}\nTítulo: ${item.title}\nPreço: ${formatPrice(
+        `✅ Item publicado com sucesso!\n\nID: ${item.id}\nTítulo: ${item.title}\nPreço: ${formatPrice(
           item.price_cents
         )}\nEstoque: ${item.stock}`
       );
@@ -120,18 +123,18 @@ export const newItemWizard = new Scenes.WizardScene<MyContext>(
       await publishItemToCatalog(ctx, item);
     } catch (err) {
       console.error(err);
-      await ctx.reply("Erro ao publicar item. Tente novamente.");
+      await ctx.reply("❌ Erro ao publicar item. Tente novamente.");
     }
     return ctx.scene.leave();
   }
 );
 
 async function publishItemToCatalog(ctx: MyContext, item: any) {
-  const caption = `*${item.title}*\n\n${item.description}\n\nPreço: ${formatPrice(
+  const caption = `*🛍️ ${item.title}*\n\n${item.description}\n\n💰 Preço: ${formatPrice(
     item.price_cents
-  )}\nEstoque: ${item.stock}`;
+  )}\n📦 Estoque: ${item.stock}`;
   const keyboard = Markup.inlineKeyboard([
-    Markup.button.callback("🛒 Comprar", `buy:${item.id}`),
+    [Markup.button.callback("🛒 Comprar", `buy:${item.id}`)],
   ]);
 
   if (item.photo_url) {
@@ -151,11 +154,15 @@ adminCommands.use(adminOnlyMiddleware);
 
 adminCommands.command("admin", async (ctx) => {
   await ctx.reply(
-    "Painel do Administrador",
-    Markup.inlineKeyboard([
-      [Markup.button.callback("➕ Novo Item", "admin:newitem")],
-      [Markup.button.callback("📦 Gerenciar Itens", "admin:manage")],
-    ])
+    "🛠️ *Painel do Administrador*",
+    {
+      parse_mode: "Markdown",
+      ...Markup.inlineKeyboard([
+        [Markup.button.callback("➕ Novo Item", "admin:newitem")],
+        [Markup.button.callback("📦 Gerenciar Itens", "admin:manage")],
+        [Markup.button.callback("📊 Relatório de Vendas", "admin:report")],
+      ]),
+    }
   );
 });
 
@@ -167,6 +174,18 @@ adminCommands.action("admin:newitem", async (ctx) => {
 adminCommands.action("admin:manage", async (ctx) => {
   await ctx.answerCbQuery();
   await sendAdminItemList(ctx);
+});
+
+adminCommands.action("admin:report", async (ctx) => {
+  await ctx.answerCbQuery();
+  const report = await getSalesReport();
+  await ctx.reply(
+    `📊 *Relatório de Vendas*\n\n` +
+      `💰 Total arrecadado: ${formatPrice(report.totalRevenue)}\n` +
+      `🛒 Pedidos pagos: ${report.paidOrders}\n` +
+      `⏳ Pedidos pendentes: ${report.pendingOrders}`,
+    { parse_mode: "Markdown" }
+  );
 });
 
 async function sendAdminItemList(ctx: MyContext) {
@@ -186,7 +205,7 @@ async function sendAdminItemList(ctx: MyContext) {
     ];
   });
 
-  await ctx.reply("Itens cadastrados:", Markup.inlineKeyboard(buttons));
+  await ctx.reply("📦 Itens cadastrados:", Markup.inlineKeyboard(buttons));
 }
 
 adminCommands.action(/admin:item:(\d+)/, async (ctx) => {
@@ -199,16 +218,18 @@ adminCommands.action(/admin:item:(\d+)/, async (ctx) => {
   }
 
   const status = item.sold_out ? "Esgotado" : item.active ? "Ativo" : "Inativo";
-  const text = `*${item.title}*\nStatus: ${status}\nEstoque: ${item.stock}\nPreço: ${formatPrice(
+  const text = `*🛍️ ${item.title}*\nStatus: ${status}\n📦 Estoque: ${item.stock}\n💰 Preço: ${formatPrice(
     item.price_cents
   )}`;
 
-  const buttons: any[] = [];
+  const buttons = [];
   if (!item.sold_out) {
     buttons.push(Markup.button.callback("⚠️ Marcar como Esgotado", `admin:soldout:${item.id}`));
   } else {
     buttons.push(Markup.button.callback("🔄 Relançar Item", `admin:relaunch:${item.id}`));
   }
+  buttons.push(Markup.button.callback("✏️ Editar", `admin:edit:${item.id}`));
+  buttons.push(Markup.button.callback("🗑️ Excluir", `admin:delete:${item.id}`));
 
   if (item.photo_url) {
     await ctx.replyWithPhoto(item.photo_url, {
@@ -234,7 +255,7 @@ adminCommands.action(/admin:soldout:(\d+)/, async (ctx) => {
   }
 
   await markItemAsSoldOut(itemId);
-  await ctx.reply(`Item "${item.title}" marcado como esgotado.`);
+  await ctx.reply(`✅ Item "${item.title}" marcado como esgotado.`);
   await notifyAllUsers(ctx, `⚠️ O item *${item.title}* acabou de esgotar!`);
   await sendAdminItemList(ctx);
 });
@@ -252,6 +273,74 @@ adminCommands.action(/admin:relaunch:(\d+)/, async (ctx) => {
   await ctx.reply("Qual a nova quantidade em estoque?");
 });
 
+adminCommands.action(/admin:edit:(\d+)/, async (ctx) => {
+  await ctx.answerCbQuery();
+  const itemId = parseInt(ctx.match![1], 10);
+  const item = await findItemById(itemId);
+  if (!item) {
+    await ctx.reply("Item não encontrado.");
+    return;
+  }
+
+  await ctx.reply(
+    `✏️ Editar item *${item.title}*\n\n` +
+      `Envie os novos dados no formato:\n` +
+      `nome | descrição | preço | estoque\n\n` +
+      `Exemplo:\n` +
+      `Camiseta Azul | Camiseta de algodão | 39,90 | 10`,
+    { parse_mode: "Markdown" }
+  );
+  ctx.session.editItemId = itemId;
+});
+
+adminCommands.action(/admin:delete:(\d+)/, async (ctx) => {
+  await ctx.answerCbQuery();
+  const itemId = parseInt(ctx.match![1], 10);
+  const item = await findItemById(itemId);
+  if (!item) {
+    await ctx.reply("Item não encontrado.");
+    return;
+  }
+
+  await deleteItem(itemId);
+  await ctx.reply(`🗑️ Item "${item.title}" excluído com sucesso.`);
+  await sendAdminItemList(ctx);
+});
+
+adminCommands.hears(/^([^|]+)\|([^|]+)\|([^|]+)\|(\d+)$/, async (ctx) => {
+  if (!isAdmin(ctx)) return;
+  if (!ctx.session.editItemId) return;
+
+  const match = ctx.message.text.match(/^([^|]+)\|([^|]+)\|([^|]+)\|(\d+)$/);
+  if (!match) return;
+
+  const [, title, description, priceText, stockText] = match;
+  const price = parseFloat(priceText.replace(",", ".").replace(/[^0-9.]/g, ""));
+  const stock = parseInt(stockText.trim(), 10);
+
+  if (Number.isNaN(price) || price <= 0 || Number.isNaN(stock) || stock < 0) {
+    await ctx.reply("❌ Dados inválidos. Use o formato: nome | descrição | preço | estoque");
+    return;
+  }
+
+  await updateItem(ctx.session.editItemId, {
+    title: title.trim(),
+    description: description.trim(),
+    price_cents: Math.round(price * 100),
+    stock,
+  });
+
+  const item = await findItemById(ctx.session.editItemId);
+  ctx.session.editItemId = undefined;
+
+  await ctx.reply(
+    `✅ Item atualizado!\n\n*${item?.title}*\n💰 ${formatPrice(
+      item?.price_cents || 0
+    )}\n📦 Estoque: ${item?.stock}`,
+    { parse_mode: "Markdown" }
+  );
+});
+
 adminCommands.hears(/^\d+$/, async (ctx) => {
   if (!isAdmin(ctx)) return;
   if (!ctx.session.relaunchItemId) return;
@@ -266,10 +355,44 @@ adminCommands.hears(/^\d+$/, async (ctx) => {
   const item = await findItemById(ctx.session.relaunchItemId);
   ctx.session.relaunchItemId = undefined;
 
-  await ctx.reply(`Item "${item?.title}" relançado com estoque de ${stock} unidade(s).`);
+  await ctx.reply(`✅ Item "${item?.title}" relançado com estoque de ${stock} unidade(s).`);
   await notifyAllUsers(ctx, `🎉 O item *${item?.title}* voltou! Estoque: ${stock}`);
   await publishItemToCatalog(ctx, item);
 });
+
+// Marcar pedido como enviado
+export function registerShipAction(bot: Telegraf<MyContext>) {
+  bot.action(/ship:(\d+)/, async (ctx) => {
+    await ctx.answerCbQuery();
+    if (!isAdmin(ctx)) {
+      await ctx.reply("Você não tem permissão.");
+      return;
+    }
+
+    const orderId = parseInt(ctx.match![1], 10);
+    const order = await findOrderById(orderId);
+    if (!order) {
+      await ctx.reply("Pedido não encontrado.");
+      return;
+    }
+
+    await markOrderAsShipped(orderId);
+    await ctx.editMessageText(
+      `${(ctx.callbackQuery?.message as any)?.text || ""}\n\n✅ *Marcado como enviado*`,
+      { parse_mode: "Markdown" }
+    );
+
+    try {
+      await bot.telegram.sendMessage(
+        order.user_id,
+        `🚚 *Seu pedido #${order.id} foi enviado!*\n\nEm breve você receberá mais informações.`,
+        { parse_mode: "Markdown" }
+      );
+    } catch (err) {
+      console.warn("Erro ao notificar cliente de envio:", err);
+    }
+  });
+}
 
 export async function notifyAllUsers(ctx: MyContext, message: string) {
   const ids = await listAllUserIds();

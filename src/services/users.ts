@@ -3,7 +3,39 @@ import { User } from "../types";
 
 export async function findUserById(id: number): Promise<User | undefined> {
   const db = await getDb();
-  return db.get<User>("SELECT * FROM users WHERE id = ?", id);
+  const rows = await db.query<User>("SELECT * FROM users WHERE id = ?", [id]);
+  return rows[0];
+}
+
+export async function updateUser(
+  id: number,
+  data: Partial<Pick<User, "name" | "cpf" | "address" | "zip_code">>
+): Promise<void> {
+  const db = await getDb();
+  const fields: string[] = [];
+  const values: any[] = [];
+
+  if (data.name) {
+    fields.push("name = ?");
+    values.push(data.name);
+  }
+  if (data.cpf) {
+    fields.push("cpf = ?");
+    values.push(data.cpf);
+  }
+  if (data.address) {
+    fields.push("address = ?");
+    values.push(data.address);
+  }
+  if (data.zip_code) {
+    fields.push("zip_code = ?");
+    values.push(data.zip_code);
+  }
+
+  if (fields.length === 0) return;
+  values.push(id);
+
+  await db.run(`UPDATE users SET ${fields.join(", ")} WHERE id = ?`, values);
 }
 
 export async function createUser(
@@ -16,18 +48,14 @@ export async function createUser(
   const db = await getDb();
   await db.run(
     "INSERT INTO users (id, name, cpf, address, zip_code) VALUES (?, ?, ?, ?, ?)",
-    id,
-    name,
-    cpf,
-    address,
-    zipCode
+    [id, name, cpf, address, zipCode]
   );
   return (await findUserById(id)) as User;
 }
 
 export async function listAllUserIds(): Promise<number[]> {
   const db = await getDb();
-  const rows = await db.all<{ id: number }[]>("SELECT id FROM users");
+  const rows = await db.query<{ id: number }>("SELECT id FROM users");
   return rows.map((r) => r.id);
 }
 

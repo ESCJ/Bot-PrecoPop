@@ -33,6 +33,7 @@ export interface Order {
   payment_method: string;
   mp_payment_id: string | null;
   status: "pending" | "paid" | "cancelled";
+  shipped: number;
   created_at: string;
   paid_at: string | null;
 }
@@ -43,6 +44,8 @@ export interface MySceneSession extends SceneSessionData, WizardSessionData {}
 
 export interface MySession extends SceneSession<MySceneSession> {
   relaunchItemId?: number;
+  editItemId?: number;
+  editProfile?: boolean;
   orderItemId?: number;
   orderQuantity?: number;
 }

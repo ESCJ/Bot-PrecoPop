@@ -1,9 +1,13 @@
 import { Router } from "express";
 import { Telegraf } from "telegraf";
+import crypto from "crypto";
 import { config } from "../config";
 import { MyContext } from "../types";
 import { getPaymentStatus } from "../services/payments";
-import { findOrderById, markOrderAsPaid } from "../services/orders";
+import {
+  findOrderById,
+  markOrderAsPaid,
+} from "../services/orders";
 import { decrementStock, findItemById, formatPrice } from "../services/items";
 import { findUserById, formatCpf } from "../services/users";
 import { notifyAdmin, notifyShippingGroup } from "./admin";
@@ -12,11 +16,25 @@ export function createWebhookRouter(bot: Telegraf<MyContext>): Router {
   const router = Router();
 
   router.post("/mercadopago", async (req, res) => {
-    // Responde rapidamente ao Mercado Pago
     res.status(200).send("OK");
 
     try {
-      const body = req.body;
+      const rawBody = Buffer.isBuffer(req.body) ? req.body.toString("utf8") : JSON.stringify(req.body);
+      const body = JSON.parse(rawBody);
+
+      const signature = req.headers["x-signature"] as string;
+      const requestId = req.headers["x-request-id"] as string;
+
+      if (!signature) {
+        console.warn("Webhook MP rejeitado: assinatura ausente");
+        return;
+      }
+
+      if (!validateMercadoPagoSignature(body, signature, requestId)) {
+        console.warn("Webhook MP rejeitado: assinatura inválida");
+        return;
+      }
+
       const topic = body.topic || body.type;
       const paymentId = body.data?.id || body.id;
 
@@ -31,10 +49,6 @@ export function createWebhookRouter(bot: Telegraf<MyContext>): Router {
         return;
       }
 
-      // Para pagamentos via Payment (Pix), já temos o ID do pagamento.
-      // Para pagamentos via Preference (cartão/boleto), associamos pelo external_reference
-      // quando o webhook chegar. A API do MP em payment.get retorna external_reference.
-      // Vamos buscar pelo external_reference aqui.
       const { Payment: MpPayment } = await import("mercadopago");
       const paymentClient = new MpPayment({
         accessToken: config.mercadoPago.accessToken,
@@ -76,28 +90,41 @@ export function createWebhookRouter(bot: Telegraf<MyContext>): Router {
         `Item: ${item?.title || "N/A"}\n` +
         `Quantidade: ${order.quantity}\n` +
         `Valor total: ${formatPrice(order.total_cents)}\n` +
-        `Pagamento: ${order.payment_method}`;
+        `Pagamento: ${formatPaymentMethod(order.payment_method)}\n` +
+        `ID Mercado Pago: ${paymentId}`;
 
       const shippingMessage =
         `📦 *PEDIDO PARA ENVIO*\n\n` +
         `Pedido: #${order.id}\n` +
         `Cliente: ${user?.name || "N/A"}\n` +
+        `Telefone/Contato: ${user?.id || "N/A"}\n` +
         `Endereço: ${user?.address || "N/A"}\n` +
         `CEP: ${user?.zip_code || "N/A"}\n\n` +
         `Item: ${item?.title || "N/A"}\n` +
         `Quantidade: ${order.quantity}\n` +
-        `Valor total: ${formatPrice(order.total_cents)}`;
+        `Valor total: ${formatPrice(order.total_cents)}\n\n` +
+        `✅ Marque como enviado no painel admin.`;
 
       try {
         await bot.telegram.sendMessage(config.admin.chatId, adminMessage, {
           parse_mode: "Markdown",
+          reply_markup: {
+            inline_keyboard: [
+              [
+                {
+                  text: "📦 Marcar como Enviado",
+                  callback_data: `ship:${order.id}`,
+                },
+              ],
+            ],
+          },
         });
         await bot.telegram.sendMessage(config.admin.shippingGroupChatId, shippingMessage, {
           parse_mode: "Markdown",
         });
         await bot.telegram.sendMessage(
           order.user_id,
-          `✅ Pagamento confirmado! Seu pedido #${order.id} foi aprovado e será enviado em breve.`,
+          `✅ *Pagamento confirmado!*\n\nSeu pedido *#${order.id}* foi aprovado e será preparado para envio em breve.\n\nAgradecemos a preferência! 🛍️`,
           { parse_mode: "Markdown" }
         );
       } catch (err) {
@@ -109,4 +136,46 @@ export function createWebhookRouter(bot: Telegraf<MyContext>): Router {
   });
 
   return router;
+}
+
+function validateMercadoPagoSignature(
+  body: any,
+  signature: string,
+  requestId: string
+): boolean {
+  try {
+    const parts = signature.split(",");
+    const tsPart = parts.find((p) => p.startsWith("ts="));
+    const hashPart = parts.find((p) => p.startsWith("v1="));
+
+    if (!tsPart || !hashPart) return false;
+
+    const ts = tsPart.replace("ts=", "");
+    const receivedHash = hashPart.replace("v1=", "");
+    const dataId = body.data?.id || "";
+
+    const template = `id:${dataId};request-id:${requestId};ts:${ts},`;
+    const secret = config.mercadoPago.webhookSecret;
+    const calculatedHash = crypto
+      .createHmac("sha256", secret)
+      .update(template)
+      .digest("hex");
+
+    return crypto.timingSafeEqual(
+      Buffer.from(receivedHash, "hex"),
+      Buffer.from(calculatedHash, "hex")
+    );
+  } catch {
+    return false;
+  }
+}
+
+function formatPaymentMethod(method: string): string {
+  const map: Record<string, string> = {
+    pix: "Pix",
+    credit_card: "Cartão de Crédito",
+    debit_card: "Cartão de Débito",
+    boleto: "Boleto",
+  };
+  return map[method] || method;
 }
