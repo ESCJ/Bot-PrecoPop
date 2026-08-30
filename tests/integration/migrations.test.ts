@@ -1,6 +1,33 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import { closeDatabase, db, ensureSchema, resetData, seedProduct, seedUser } from "./helpers";
 import { getOrCreateCartId } from "../../src/repositories/carts.repo";
+import { createUser, findUserById } from "../../src/repositories/users.repo";
+
+/** Colunas que guardam id de usuário do Telegram e por isso precisam de BIGINT. */
+const TELEGRAM_ID_COLUMNS: ReadonlyArray<[table: string, column: string]> = [
+  ["users", "id"],
+  ["items", "created_by"],
+  ["orders", "user_id"],
+  ["carts", "user_id"],
+  ["coupons", "created_by"],
+  ["broadcasts", "created_by"],
+  ["broadcast_targets", "user_id"],
+];
+
+function migrationSql(file: string): string {
+  return readFileSync(join("src", "infra", "db", "migrations", file), "utf8");
+}
+
+async function columnType(table: string, column: string): Promise<string | undefined> {
+  const row = await db.queryOne<{ data_type: string }>(
+    `SELECT data_type FROM information_schema.columns
+      WHERE table_schema = 'public' AND table_name = $1 AND column_name = $2`,
+    [table, column]
+  );
+  return row?.data_type;
+}
 
 describe("Migrations", () => {
   beforeAll(async () => {
@@ -95,5 +122,88 @@ describe("Migrations", () => {
         variant.id,
       ])
     ).rejects.toThrow(/quantity/);
+  });
+
+  describe("Ids do Telegram acima de 2^31", () => {
+    // Regressao: contas novas do Telegram passam de 2.147.483.647. Com as
+    // colunas em INTEGER, o /start desses usuarios morria em
+    // "value ... is out of range for type integer".
+    const BIG_TELEGRAM_ID = 8_601_816_429;
+
+    it("declara BIGINT em toda coluna que guarda id de usuário", async () => {
+      for (const [table, column] of TELEGRAM_ID_COLUMNS) {
+        expect(await columnType(table, column), `${table}.${column} deveria ser bigint`).toBe(
+          "bigint"
+        );
+      }
+    });
+
+    it("cadastra um usuário com id acima do limite do integer", async () => {
+      const created = await createUser({
+        id: BIG_TELEGRAM_ID,
+        name: "Usuário Novo",
+        cpf: "39053344705",
+        phone: "11999999999",
+        zipCode: "01001000",
+        street: "Praça da Sé",
+        number: "1",
+        complement: null,
+        neighborhood: "Sé",
+        city: "São Paulo",
+        state: "SP",
+      });
+
+      expect(created.id).toBe(BIG_TELEGRAM_ID);
+      expect((await findUserById(BIG_TELEGRAM_ID))?.id).toBe(BIG_TELEGRAM_ID);
+    });
+
+    it("converte um banco legado que ainda esteja em INTEGER", async () => {
+      // Reproduz o estado real de producao: o schema declarava BIGINT, mas o
+      // CREATE TABLE IF NOT EXISTS nunca corrigiu a coluna que ja existia.
+      await db.execute("ALTER TABLE users ALTER COLUMN id TYPE INTEGER");
+      expect(await columnType("users", "id")).toBe("integer");
+
+      await db.execute(migrationSql("011_bigint_user_ids.sql"));
+
+      expect(await columnType("users", "id")).toBe("bigint");
+
+      await db.execute("INSERT INTO users (id, name, cpf) VALUES ($1, 'Grande', '39053344705')", [
+        BIG_TELEGRAM_ID,
+      ]);
+      expect((await findUserById(BIG_TELEGRAM_ID))?.id).toBe(BIG_TELEGRAM_ID);
+    });
+
+    it("é idempotente quando o banco já está correto", async () => {
+      await db.execute(migrationSql("011_bigint_user_ids.sql"));
+      await db.execute(migrationSql("011_bigint_user_ids.sql"));
+
+      expect(await columnType("users", "id")).toBe("bigint");
+    });
+
+    it("devolve BIGINT como número, não como string", async () => {
+      // O driver pg devolve int8 como string por padrão. Sem o type parser,
+      // user.id nunca bateria com o id que o Telegram envia e todo SUM() do
+      // relatório de faturamento viraria concatenação de texto.
+      await createUser({
+        id: BIG_TELEGRAM_ID,
+        name: "Usuário Novo",
+        cpf: "39053344705",
+        phone: null,
+        zipCode: "01001000",
+        street: "Praça da Sé",
+        number: "1",
+        complement: null,
+        neighborhood: "Sé",
+        city: "São Paulo",
+        state: "SP",
+      });
+
+      const user = await findUserById(BIG_TELEGRAM_ID);
+      expect(typeof user?.id).toBe("number");
+
+      const row = await db.queryOne<{ total: number }>("SELECT COUNT(*) AS total FROM users");
+      expect(typeof row?.total).toBe("number");
+      expect(row?.total).toBe(1);
+    });
   });
 });

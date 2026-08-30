@@ -1,6 +1,13 @@
-import { Pool, PoolClient, QueryResultRow } from "pg";
+import { Pool, PoolClient, QueryResultRow, types } from "pg";
 import { config } from "../../config/env";
 import { logger } from "../logger";
+
+// Por padrão o driver devolve BIGINT como string, para não perder precisão
+// acima de 2^53. Aqui os valores são ids do Telegram, contagens e somas em
+// centavos — todos muito abaixo desse limite. Sem esta conversão, `user.id`
+// deixaria de ser comparável com o id que o Telegram envia e todo SUM() viraria
+// string, corrompendo os relatórios de faturamento.
+types.setTypeParser(types.builtins.INT8, (value) => Number(value));
 
 export const pool = new Pool({
   connectionString: config.database.url,
