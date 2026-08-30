@@ -17,9 +17,20 @@ export interface User {
   city: string | null;
   state: string | null;
   address: string | null;
+  /** O cliente bloqueou o bot — detectado quando um envio falha. */
   blocked_bot: boolean;
+  /** O administrador suspendeu o cliente. `null` = ativo. */
+  banned_at: Date | null;
   created_at: Date;
   updated_at: Date;
+}
+
+/** Linha da lista administrativa de clientes, já com os totais de compra. */
+export interface CustomerSummary extends User {
+  orders_count: number;
+  paid_orders_count: number;
+  total_spent_cents: number;
+  last_order_at: Date | null;
 }
 
 export interface Item {

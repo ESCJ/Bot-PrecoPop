@@ -36,6 +36,25 @@ export const adminOnly: MiddlewareFn<MyContext> = async (ctx, next) => {
 };
 
 /**
+ * Barra o cliente suspenso pelo administrador antes de qualquer cena ou
+ * handler — inclusive antes do Stage, para que uma cena em andamento não
+ * continue rodando depois da suspensão.
+ */
+export const bannedGuard: MiddlewareFn<MyContext> = async (ctx, next) => {
+  if (ctx.isAdmin || !ctx.dbUser?.banned_at) return next();
+
+  const notice =
+    "Seu acesso à loja está suspenso. " +
+    "Se acredita que houve um engano, entre em contato com o atendimento.";
+
+  if (ctx.callbackQuery) {
+    await ctx.answerCbQuery(notice, { show_alert: true }).catch(() => undefined);
+  } else {
+    await ctx.reply(notice).catch(() => undefined);
+  }
+};
+
+/**
  * Limitador por usuário (token bucket) para conter flood e abuso.
  * Administradores não são limitados.
  */

@@ -51,6 +51,14 @@ export const CB = {
   adminBroadcast: "adm:bc",
   adminReport: "adm:rp",
   adminReportRange: "adm:rpr",
+  adminCustomers: "adm:cu",
+  adminCustomersPage: "adm:cu:p",
+  adminCustomerView: "adm:cuv",
+  adminCustomerBan: "adm:cub",
+  adminCustomerUnban: "adm:cun",
+  adminCustomerDelete: "adm:cud",
+  adminCustomerDeleteYes: "adm:cuy",
+  adminCustomerHistory: "adm:cuh",
 } as const;
 
 export function cb(prefix: string, ...parts: (string | number)[]): string {

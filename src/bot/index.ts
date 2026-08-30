@@ -4,6 +4,7 @@ import { MyContext, MySession } from "../domain/types";
 import { logger } from "../infra/logger";
 import { createPostgresSessionStore } from "../infra/telegram/session-store";
 import {
+  bannedGuard,
   contextEnricher,
   errorBoundary,
   rateLimit,
@@ -18,6 +19,7 @@ import { menuHandlers, showMainMenu } from "./handlers/customer/menu";
 import { ordersHandlers } from "./handlers/customer/orders";
 import { profileEditScene, profileHandlers } from "./handlers/customer/profile";
 import { adminPanelHandlers } from "./handlers/admin/panel";
+import { adminCustomersHandlers } from "./handlers/admin/customers";
 import {
   adminItemsHandlers,
   itemEditScene,
@@ -69,6 +71,7 @@ export function createBot(): Telegraf<MyContext> {
     })
   );
   bot.use(userLoader);
+  bot.use(bannedGuard);
   bot.use(stage.middleware());
 
   bot.start(async (ctx) => {
@@ -111,6 +114,7 @@ export function createBot(): Telegraf<MyContext> {
       adminPanelHandlers,
       adminItemsHandlers,
       adminOrdersHandlers,
+      adminCustomersHandlers,
       adminMarketingHandlers,
       adminBroadcastHandlers
     )

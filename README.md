@@ -48,6 +48,7 @@ boleto), rastreio de entrega e painel administrativo completo.
 | Cupons | CRUD com validade e limite de uso. |
 | Frete | Edição da tarifa e do prazo por UF e do limite de frete grátis. |
 | Pedidos | Filtro por status e marcação de envio **com código de rastreio**, notificando o cliente automaticamente. |
+| Clientes | Lista paginada (todos, compradores, suspensos) com cadastro, endereço e total gasto. Submenu com **histórico de pagamentos** (data, itens, valor por pedido e valor total), **bloquear/reativar** o acesso à loja e **remover** o cadastro com confirmação em duas etapas. |
 | Broadcast | Mensagem com foto opcional, pré-visualização, confirmação, envio com throttle e relatório de entregues/falhas. Quem bloqueou o bot é marcado automaticamente. |
 | Relatórios | Faturamento, pedidos pagos e pendentes, ticket médio e ranking de produtos. |
 
@@ -106,7 +107,7 @@ src/
 │   ├── middlewares/              sessão, admin guard, carregamento de usuário, rate limit, erros
 │   ├── scenes/                   cadastro e wizards do admin
 │   ├── handlers/customer/        menu, catálogo, carrinho, checkout, pedidos, perfil
-│   ├── handlers/admin/           painel, produtos, pedidos, marketing, broadcast
+│   ├── handlers/admin/           painel, produtos, pedidos, clientes, marketing, broadcast
 │   └── ui/                       teclados, escape de HTML e views
 ├── http/
 │   ├── server.ts                 Express, health check e páginas de retorno

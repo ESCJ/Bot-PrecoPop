@@ -1,4 +1,10 @@
-import { CartTotals, OrderWithItems, User, VariantWithItem } from "../../domain/types";
+import {
+  CartTotals,
+  CustomerSummary,
+  OrderWithItems,
+  User,
+  VariantWithItem,
+} from "../../domain/types";
 import { formatPrice } from "../../domain/money";
 import { formatCpf } from "../../domain/cpf";
 import { formatAddress, formatCep } from "../../domain/cep";
@@ -120,4 +126,97 @@ export function renderProfile(user: User): string {
     `CEP: ${esc(formatCep(user.zip_code))}\n` +
     `Endereço: ${esc(address || "não informado")}`
   );
+}
+
+/* ---------------------------------------------------------------- */
+/* Painel administrativo de clientes                                 */
+/* ---------------------------------------------------------------- */
+
+/** Rótulo curto de uma linha da lista de clientes. */
+export function renderCustomerListLine(customer: CustomerSummary): string {
+  const marks = [customer.banned_at ? "⛔" : null, customer.blocked_bot ? "🔕" : null]
+    .filter(Boolean)
+    .join("");
+  const spent =
+    customer.paid_orders_count > 0
+      ? `${customer.paid_orders_count}× · ${formatPrice(customer.total_spent_cents)}`
+      : "sem compras";
+  return `${marks}${marks ? " " : ""}${customer.name} · ${spent}`;
+}
+
+export function renderCustomerCard(customer: CustomerSummary): string {
+  const address = formatAddress({
+    street: customer.street,
+    number: customer.number,
+    complement: customer.complement,
+    neighborhood: customer.neighborhood,
+    city: customer.city,
+    state: customer.state,
+  });
+
+  const status = customer.banned_at
+    ? `⛔ Suspenso desde ${esc(formatDate(customer.banned_at))}`
+    : "✅ Ativo";
+
+  // Os dois estados coexistem e significam coisas diferentes: um é decisão do
+  // administrador, o outro é o cliente tendo bloqueado o bot no Telegram.
+  const reachability = customer.blocked_bot ? "\n🔕 O cliente bloqueou o bot" : "";
+
+  return (
+    `${bold(customer.name)}\n` +
+    `${status}${reachability}\n\n` +
+    `ID Telegram: ${code(customer.id)}\n` +
+    `CPF: ${esc(formatCpf(customer.cpf))}\n` +
+    (customer.phone ? `Telefone: ${esc(customer.phone)}\n` : "") +
+    `CEP: ${esc(formatCep(customer.zip_code))}\n` +
+    `Endereço: ${esc(address || "não informado")}\n` +
+    `Cadastro: ${esc(formatDate(customer.created_at))}\n\n` +
+    `${bold("Compras")}\n` +
+    `Pedidos: ${customer.orders_count} (${customer.paid_orders_count} pago(s))\n` +
+    `Total pago: ${bold(formatPrice(customer.total_spent_cents))}\n` +
+    `Último pedido: ${esc(formatDate(customer.last_order_at))}`
+  );
+}
+
+export function renderPaymentHistory(
+  customer: CustomerSummary,
+  orders: OrderWithItems[],
+  page: number,
+  totalPages: number
+): string {
+  const header =
+    `${bold(`Histórico de pagamentos`)}\n${esc(customer.name)}\n\n` +
+    `Pedidos pagos: ${customer.paid_orders_count}\n` +
+    `Valor total: ${bold(formatPrice(customer.total_spent_cents))}`;
+
+  if (orders.length === 0) {
+    return `${header}\n\nEste cliente ainda não tem pagamentos confirmados.`;
+  }
+
+  const blocks = orders.map((order) => {
+    const items = order.items
+      .map(
+        (item) =>
+          `   • ${esc(item.item_title)}` +
+          (item.variant_name !== "Padrão" ? ` (${esc(item.variant_name)})` : "") +
+          ` — ${item.quantity} × ${formatPrice(item.unit_price_cents)} = ` +
+          `${formatPrice(item.total_cents)}`
+      )
+      .join("\n");
+
+    const extras = [
+      order.discount_cents > 0 ? `desconto ${formatPrice(order.discount_cents)}` : null,
+      order.shipping_cents > 0 ? `frete ${formatPrice(order.shipping_cents)}` : null,
+    ].filter(Boolean);
+
+    return (
+      `${bold(`#${order.id}`)} · ${esc(formatDate(order.paid_at ?? order.created_at))} · ` +
+      `${esc(methodLabel(order.payment_method))}\n${items}\n` +
+      `   ${bold(`Total: ${formatPrice(order.total_cents)}`)}` +
+      (extras.length > 0 ? ` (${esc(extras.join(", "))})` : "")
+    );
+  });
+
+  const footer = totalPages > 1 ? `\n\nPágina ${page} de ${totalPages}` : "";
+  return `${header}\n\n${blocks.join("\n\n")}${footer}`;
 }

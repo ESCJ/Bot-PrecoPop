@@ -28,13 +28,16 @@ export async function showAdminPanel(ctx: MyContext): Promise<void> {
     `Produtos cadastrados: ${items}\n` +
     `Pedidos aguardando pagamento: ${pending}\n` +
     `Pedidos a enviar: ${awaiting}\n` +
-    `Clientes: ${users.total} (${users.reachable} alcançáveis)`;
+    `Clientes: ${users.total} (${users.reachable} alcançáveis` +
+    (users.banned > 0 ? `, ${users.banned} suspenso(s)` : "") +
+    `)`;
 
   const keyboard = Markup.inlineKeyboard(
     rows(
       [btn.cb("Novo produto", CB.adminNewItem)],
       [btn.cb("Gerenciar produtos", cb(CB.adminItemsPage, 1))],
       [btn.cb(`Pedidos a enviar (${awaiting})`, cb(CB.adminOrdersPage, 1))],
+      [btn.cb(`Clientes (${users.total})`, cb(CB.adminCustomersPage, "all", 1))],
       [btn.cb("Cupons", CB.adminCoupons), btn.cb("Frete", CB.adminShipping)],
       [btn.cb("Enviar comunicado", CB.adminBroadcast)],
       [btn.cb("Relatórios", cb(CB.adminReportRange, 30))],

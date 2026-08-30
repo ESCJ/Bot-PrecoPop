@@ -139,6 +139,43 @@ export async function countOrdersByUser(userId: number): Promise<number> {
   return Number(row?.count ?? 0);
 }
 
+/** Histórico de pagamentos do cliente: só o que virou receita. */
+export async function listPaidOrdersByUser(
+  userId: number,
+  limit: number,
+  offset: number
+): Promise<OrderWithItems[]> {
+  const orders = await db.query<Order>(
+    `SELECT ${ORDER_COLUMNS} FROM orders
+      WHERE user_id = $1 AND status = 'paid'
+      ORDER BY paid_at DESC NULLS LAST, created_at DESC
+      LIMIT $2 OFFSET $3`,
+    [userId, limit, offset]
+  );
+  return Promise.all(
+    orders.map(async (order) => ({ ...order, items: await listOrderItems(order.id) }))
+  );
+}
+
+export async function countPaidOrdersByUser(userId: number): Promise<number> {
+  const row = await db.queryOne<{ count: string }>(
+    "SELECT COUNT(*)::TEXT AS count FROM orders WHERE user_id = $1 AND status = 'paid'",
+    [userId]
+  );
+  return Number(row?.count ?? 0);
+}
+
+/** Ids dos pedidos que ainda seguram estoque reservado deste cliente. */
+export async function findPendingOrderIdsByUser(userId: number): Promise<number[]> {
+  const rows = await db.query<{ id: number }>(
+    `SELECT id FROM orders
+      WHERE user_id = $1 AND status = 'pending' AND NOT stock_released
+      ORDER BY id`,
+    [userId]
+  );
+  return rows.map((row) => row.id);
+}
+
 export async function listOrdersByStatus(
   status: OrderStatus,
   limit: number,
