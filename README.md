@@ -139,7 +139,7 @@ sobe pela metade.
 | `WEBHOOK_URL` | não | vazio | Vazio em dev; o bot usa long polling |
 | `PORT` | não | `3000` | O Railway injeta automaticamente |
 | `NODE_ENV` | não | `development` | `development` / `test` / `production` |
-| `LOG_LEVEL` | não | `info` | `fatal` … `trace` |
+| `LOG_LEVEL` | não | `info` | `silent`, `fatal` … `trace` |
 | `DATABASE_POOL_MAX` | não | `10` | Conexões simultâneas no pool |
 | `DATABASE_SSL` | não | `true` | `false` para Postgres local |
 | `PIX_TTL_MINUTES` | não | `30` | Validade do Pix e da reserva de estoque |

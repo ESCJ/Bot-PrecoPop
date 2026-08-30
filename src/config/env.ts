@@ -14,7 +14,8 @@ const csvNumbers = z
 
 const envSchema = z.object({
   NODE_ENV: z.enum(["development", "test", "production"]).default("development"),
-  LOG_LEVEL: z.enum(["fatal", "error", "warn", "info", "debug", "trace"]).default("info"),
+  // "silent" desliga o log por completo — útil em CI e em suítes de teste.
+  LOG_LEVEL: z.enum(["silent", "fatal", "error", "warn", "info", "debug", "trace"]).default("info"),
 
   TELEGRAM_BOT_TOKEN: z.string().min(10, "Token do Telegram inválido"),
   TELEGRAM_WEBHOOK_SECRET: z

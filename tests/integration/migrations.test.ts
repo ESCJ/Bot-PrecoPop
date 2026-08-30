@@ -1,5 +1,6 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
-import { closeDatabase, db, ensureSchema, resetData } from "./helpers";
+import { closeDatabase, db, ensureSchema, resetData, seedProduct, seedUser } from "./helpers";
+import { getOrCreateCartId } from "../../src/repositories/carts.repo";
 
 describe("Migrations", () => {
   beforeAll(async () => {
@@ -76,21 +77,23 @@ describe("Migrations", () => {
   });
 
   it("impede que a reserva ultrapasse o estoque físico", async () => {
-    await db.execute(
-      "INSERT INTO items (id, title, description, price_cents, created_by) VALUES (1, $1, $2, $3, $4)",
-      ["Produto", "Descrição", 1000, 1]
-    );
+    const { variant } = await seedProduct({ priceCents: 1_000, stock: 2 });
 
     await expect(
-      db.execute(
-        "INSERT INTO item_variants (item_id, name, stock, reserved) VALUES (1, 'Padrão', 2, 5)"
-      )
+      db.execute("UPDATE item_variants SET reserved = 5 WHERE id = $1", [variant.id])
     ).rejects.toThrow(/item_variants_reserved_within_stock/);
   });
 
   it("impede quantidade zero ou negativa no carrinho", async () => {
+    const user = await seedUser();
+    const { variant } = await seedProduct({ priceCents: 1_000, stock: 5 });
+    const cartId = await getOrCreateCartId(user.id);
+
     await expect(
-      db.execute("INSERT INTO cart_items (cart_id, variant_id, quantity) VALUES (1, 1, 0)")
-    ).rejects.toThrow();
+      db.execute("INSERT INTO cart_items (cart_id, variant_id, quantity) VALUES ($1, $2, 0)", [
+        cartId,
+        variant.id,
+      ])
+    ).rejects.toThrow(/quantity/);
   });
 });

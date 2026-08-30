@@ -71,7 +71,7 @@ jobs:
       LOG_LEVEL: silent
       DATABASE_URL: postgres://postgres:postgres@localhost:5432/precopop_test
       DATABASE_SSL: "false"
-      DATABASE_POOL_MAX: "5"
+      DATABASE_POOL_MAX: "15"
       TELEGRAM_BOT_TOKEN: "0000000000:TEST-TOKEN-PARA-CI-SOMENTE"
       TELEGRAM_WEBHOOK_SECRET: "ci-secret-token-123"
       ADMIN_CHAT_IDS: "1"
