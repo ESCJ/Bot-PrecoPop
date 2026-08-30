@@ -27,15 +27,21 @@ async function main(): Promise<void> {
     });
   });
 
-  const webhookUrl =
-    config.telegram.webhookUrl ?? `${config.server.publicUrl}${config.telegram.webhookPath}`;
-
-  await bot.telegram.setWebhook(webhookUrl, {
-    secret_token: config.telegram.webhookSecret,
-    drop_pending_updates: false,
-    allowed_updates: ["message", "callback_query"],
-  });
-  logger.info({ webhookUrl }, "Webhook do Telegram configurado");
+  if (config.telegram.useWebhook) {
+    // `webhookUrl` já inclui o caminho — registrar só a URL base faria o
+    // Telegram entregar os updates em uma rota que ninguém escuta.
+    await bot.telegram.setWebhook(config.telegram.webhookUrl!, {
+      secret_token: config.telegram.webhookSecret,
+      drop_pending_updates: false,
+      allowed_updates: ["message", "callback_query"],
+    });
+    logger.info({ webhookUrl: config.telegram.webhookUrl }, "Webhook do Telegram configurado");
+  } else {
+    // Desenvolvimento: sem URL pública, o bot busca os updates por long polling.
+    await bot.telegram.deleteWebhook({ drop_pending_updates: false });
+    void bot.launch({ allowedUpdates: ["message", "callback_query"] });
+    logger.info("Bot em long polling (WEBHOOK_URL não definido)");
+  }
 
   await registerBotCommands(bot);
 

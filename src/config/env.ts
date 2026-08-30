@@ -1,5 +1,6 @@
 import "dotenv/config";
 import { z } from "zod";
+import { buildTelegramWebhookUrl, TELEGRAM_WEBHOOK_PATH } from "../domain/urls";
 
 const csvNumbers = z
   .string()
@@ -83,8 +84,10 @@ export const config = {
   telegram: {
     botToken: env.TELEGRAM_BOT_TOKEN,
     webhookSecret: env.TELEGRAM_WEBHOOK_SECRET,
-    webhookUrl: env.WEBHOOK_URL,
-    webhookPath: "/webhook/telegram",
+    webhookPath: TELEGRAM_WEBHOOK_PATH,
+    /** Sem `WEBHOOK_URL` o bot roda em long polling (modo desenvolvimento). */
+    useWebhook: Boolean(env.WEBHOOK_URL),
+    webhookUrl: env.WEBHOOK_URL ? buildTelegramWebhookUrl(env.WEBHOOK_URL) : null,
     sessionTtlDays: env.SESSION_TTL_DAYS,
   },
   server: {
